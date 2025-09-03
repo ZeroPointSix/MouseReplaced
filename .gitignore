@@ -205,3 +205,22 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+
+
+# Addtional
+# Python virtual environment
+Lib/
+Scripts/
+pyvenv.cfg
+__pycache__/
+*.exe
+*.spec
+
+# IDE-specific files
+.vscode/
+.idea/
+
+# OS-specific files
+.DS_Store
+thumbs.db
