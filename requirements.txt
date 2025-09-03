@@ -1,0 +1,6 @@
+pynput==1.8.1
+pygetwindow==0.0.9
+pyrect==0.2.0
+pystray==0.19.5
+Pillow==11.3.0
+PyInstaller==6.15.0
