@@ -6,28 +6,19 @@ import sys
 import os
 
 def get_base_path():
-    """获取程序运行的基础路径，兼容开发模式和 PyInstaller"""
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    else:
-        return os.path.abspath(".")
+    if getattr(sys, 'frozen', False): return os.path.dirname(sys.executable)
+    else: return os.path.abspath(".")
 
 class AppConfig:
-    """
-    加载并持有从config.ini中读取的应用程序配置。
-    """
     def __init__(self, config_file='config.ini'):
         base_path = get_base_path()
         self.config_path = os.path.join(base_path, config_file)
         
         config = configparser.ConfigParser()
-        
         if not os.path.exists(self.config_path):
             raise FileNotFoundError(f"配置文件未找到！请确保 '{config_file}' 与 .exe 在同一目录下。")
-            
         config.read(self.config_path, encoding='utf-8')
 
-        # --- 后续所有加载逻辑保持完全不变 ---
         keybindings = config['Keybindings']
         self.MOVE_UP_VK = KEY_TO_VK[keybindings.get('move_up')]
         self.MOVE_DOWN_VK = KEY_TO_VK[keybindings.get('move_down')]
@@ -58,5 +49,9 @@ class AppConfig:
         self.MOUSE_MOVE_SPEED = settings.getint('mouse_move_speed')
         self.MOUSE_SPEED_SHIFT = settings.getfloat('mouse_speed_shift_multiplier')
         self.MOUSE_SPEED_CAPLOCK = settings.getfloat('mouse_speed_capslock_multiplier')
-        self.MOUSE_SCROLL_AMOUNT = settings.getint('mouse_scroll_amount')
         self.DELAY_PER_STEP = settings.getfloat('delay_per_step')
+
+        scrolling_settings = config['SmoothScrolling']
+        self.SCROLL_INITIAL_VELOCITY = scrolling_settings.getfloat('initial_velocity')
+        self.SCROLL_MAX_VELOCITY = scrolling_settings.getfloat('max_velocity')
+        self.SCROLL_ACCELERATION = scrolling_settings.getfloat('acceleration')
