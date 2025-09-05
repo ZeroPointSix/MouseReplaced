@@ -106,8 +106,6 @@ KeyMouse 的设计围绕以下几个核心理念展开：
 pip install -r requirements.txt
 ```
 
-> **注意**：`requirements.txt` 文件目前不存在，你需要根据 `Lib/site-packages` 中的库手动创建或通过 `pip freeze > requirements.txt` 生成。
-
 ### 运行
 
 ```bash
