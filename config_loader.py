@@ -1,5 +1,3 @@
-# config_loader.py
-
 import configparser
 from utool import KEY_TO_VK, NAME_TO_PYNPUT_KEY
 import sys
@@ -13,10 +11,9 @@ class AppConfig:
     def __init__(self, config_file='config.ini'):
         base_path = get_base_path()
         self.config_path = os.path.join(base_path, config_file)
-        
         config = configparser.ConfigParser()
         if not os.path.exists(self.config_path):
-            raise FileNotFoundError(f"配置文件未找到！请确保 '{config_file}' 与 .exe 在同一目录下。")
+            raise FileNotFoundError(f"配置文件 '{config_file}' 未找到！")
         config.read(self.config_path, encoding='utf-8')
 
         keybindings = config['Keybindings']
@@ -29,20 +26,29 @@ class AppConfig:
         self.LEFT_CLICK_VK = KEY_TO_VK[keybindings.get('left_click')]
         self.RIGHT_CLICK_VK = KEY_TO_VK[keybindings.get('right_click')]
         self.MIDDLE_CLICK_VK = KEY_TO_VK[keybindings.get('middle_click')]
+        self.STICKY_LEFT_CLICK_VK = KEY_TO_VK[keybindings.get('sticky_left_click')]
         self.TOGGLE_MODE_INTERNAL_VK = KEY_TO_VK[keybindings.get('toggle_mode_internal')]
+        
+        # --- 核心修改：解析 <alt>+a 格式 ---
+        hotkey_str = keybindings.get('toggle_mode_hotkey')
+        parts = hotkey_str.replace('<', '').replace('>', '').lower().split('+')
+        self.HOTKEY_MODIFIER = parts[0] # 'alt'
+        self.HOTKEY_TRIGGER_KEY = parts[1] # 'a'
+        self.HOTKEY_TRIGGER_VK = KEY_TO_VK[self.HOTKEY_TRIGGER_KEY]
+
         self.MOVE_UP_CHAR = keybindings.get('move_up')
         self.MOVE_DOWN_CHAR = keybindings.get('move_down')
         self.MOVE_LEFT_CHAR = keybindings.get('move_left')
         self.MOVE_RIGHT_CHAR = keybindings.get('move_right')
-        self.SCROLL_DOWN_CHAR = keybindings.get('scroll_down')
-        self.SCROLL_UP_CHAR = keybindings.get('scroll_up')
+        
         exit_key_name = keybindings.get('exit_program')
         self.EXIT_PROGRAM_PYNPUT = NAME_TO_PYNPUT_KEY[exit_key_name]
-        self.TOGGLE_MODE_HOTKEY = keybindings.get('toggle_mode_hotkey')
+        
         self.MOUSE_CONTROL_VKS = {
             self.MOVE_UP_VK, self.MOVE_DOWN_VK, self.MOVE_LEFT_VK, self.MOVE_RIGHT_VK,
             self.SCROLL_DOWN_VK, self.SCROLL_UP_VK, self.LEFT_CLICK_VK,
-            self.RIGHT_CLICK_VK, self.MIDDLE_CLICK_VK, self.TOGGLE_MODE_INTERNAL_VK
+            self.RIGHT_CLICK_VK, self.MIDDLE_CLICK_VK, self.TOGGLE_MODE_INTERNAL_VK,
+            self.STICKY_LEFT_CLICK_VK
         }
         
         settings = config['Settings']

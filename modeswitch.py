@@ -10,6 +10,7 @@ class ControlStateManager:
     is_left_mouse_button_held_by_keyboard = False
     is_right_mouse_button_held_by_keyboard = False
     is_middle_mouse_button_held_by_keyboard = False
+    sticky_left_click_active = False
 
 class ModeSwitch:
     """热键管理应该是唯一的实例,负责所有与模式切换的功能"""
