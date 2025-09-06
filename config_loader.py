@@ -56,7 +56,8 @@ class AppConfig:
         self.MOUSE_SPEED_SHIFT = settings.getfloat('mouse_speed_shift_multiplier')
         self.MOUSE_SPEED_CAPLOCK = settings.getfloat('mouse_speed_capslock_multiplier')
         self.DELAY_PER_STEP = settings.getfloat('delay_per_step')
-
+        self.RUN_AS_ADMIN = settings.getboolean('run_as_admin', False)
+        
         scrolling_settings = config['SmoothScrolling']
         self.SCROLL_INITIAL_VELOCITY = scrolling_settings.getfloat('initial_velocity')
         self.SCROLL_MAX_VELOCITY = scrolling_settings.getfloat('max_velocity')
