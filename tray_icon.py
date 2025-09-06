@@ -5,10 +5,10 @@ from PIL import Image, ImageDraw
 import threading
 import os
 import sys
+import time
 from gui import run_gui 
 
 class TrayIcon:
-    # __init__ 保持不变，接收所有需要的参数
     def __init__(self, mode_switch, listener, stop_event):
         self.mode_switch = mode_switch
         self.listener = listener
@@ -18,6 +18,7 @@ class TrayIcon:
         self.inactive_icon = self.create_icon(False)
         self.thread = None
         self.is_settings_window_open = False
+        self.is_exiting = False # 新增一个标志，防止重复退出
 
     def create_icon(self, active):
         width, height = 64, 64
@@ -39,21 +40,43 @@ class TrayIcon:
     # ====================================================================
     # ====================  最终版退出逻辑 ========================
     # ====================================================================
-    def on_exit(self):
+    def _shutdown_sequence(self):
         """
-        执行最终版的强制退出逻辑。
-        这将跳过PyInstaller的清理检查，从而100%避免警告弹窗。
+        这个私有方法包含了所有实际的关闭操作。
+        它在一个独立的后台线程中运行，以避免阻塞主线程。
         """
-        print("正在执行强制退出...")
+        print("后台关闭序列已启动...")
         
-        # 隐藏并停止托盘图标，提供即时反馈
+        # 1. 停止 pystray 图标的事件循环
         if self.icon:
-            self.icon.visible = False
             self.icon.stop()
         
-        # 立即终止整个进程
+        # 2. 发送信号，让所有自定义的后台线程（如 movement_worker）停止
+        self.stop_event.set()
+        
+        # 3. 请求 pynput 监听器停止
+        self.listener.stop()
+        
+        # 4. (可选但推荐) 等待监听器线程真正结束
+        if self.listener.is_alive():
+            self.listener.join(timeout=1.0) # 添加超时以防万一
+        print("所有线程已停止。")
+
+        # 5. (关键) 强制终止整个进程，以100%避免PyInstaller的清理警告
         os._exit(0)
-    
+
+    def on_exit(self):
+        """
+        当用户点击“退出”或程序请求重启时，此方法被调用。
+        它的唯一职责是启动一个后台线程来执行真正的关闭操作。
+        """
+        if not self.is_exiting:
+            self.is_exiting = True
+            print("收到退出请求，启动后台关闭线程...")
+            # 创建并启动一个守护线程来处理关闭，然后立即返回
+            shutdown_thread = threading.Thread(target=self._shutdown_sequence, daemon=True)
+            shutdown_thread.start()
+
     def on_settings_window_closed(self):
         self.is_settings_window_open = False
         print("设置窗口已关闭。")
