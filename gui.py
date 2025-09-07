@@ -1,7 +1,6 @@
-"""GUI模块,提供图形用户界面功能。"""
-
 import tkinter as tk
-from tkinter import ttk, messagebox
+import tkinter.ttk as ttk
+from tkinter import messagebox
 import configparser
 import os
 import sys
@@ -193,7 +192,8 @@ class KeyMouseGUI:
         
         self.create_key_setting(mode_frame, "切换模式热键", "toggle_mode_hotkey", 0)
         self.create_key_setting(mode_frame, "内部模式切换键", "toggle_mode_internal", 1)
-        self.create_key_setting(mode_frame, "退出程序", "exit_program", 2)
+        self.create_key_setting(mode_frame, "进入区域选择模式", "enter_region_select_mode", 2)
+        self.create_key_setting(mode_frame, "退出程序", "exit_program", 3)
 
     def create_key_setting(self, parent, label_text, config_key, row):
         """创建单个键位设置行。"""
@@ -464,7 +464,8 @@ class KeyMouseGUI:
             'apostrophe': 'apostrophe',
             'comma': 'comma',
             'period': 'period',
-            'slash': 'slash'
+            'slash': 'slash',
+            'enter_region_select_mode': 'f' 
         }
         
         final_key_str = key_map.get(keysym, keysym.lower())

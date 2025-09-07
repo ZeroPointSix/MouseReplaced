@@ -6,28 +6,34 @@ import win32con
 import win32api
 import modeswitch
 import config_loader
+import os
 import sys
 import argparse
+import traceback
+import ctypes
+import subprocess
+import logging
 from utool import KEY_TO_VK
 from scroll_controller import ScrollController
 from win_platform import WinPlatformScroller
 from gui import run_gui
 from tray_icon import TrayIcon
-import traceback
-import ctypes
+from modeswitch import AppMode
 
 
 def is_admin():
-    """检查当前脚本是否以管理员权限运行。"""
     try:
         return ctypes.windll.shell32.IsUserAnAdmin()
     except:
         return False
 
 
+region_selector_process = None
+
+
 class MouseActionManager:
-    def __init__(self, mouse_controller, mode_switch, mouse_state, config, 
-                 active_direction_keys):
+    # ... (此类内容无需修改，保持原样)
+    def __init__(self, mouse_controller, mode_switch, mouse_state, config, active_direction_keys):
         self.mouse_controller = mouse_controller
         self.mouse_state = mouse_state
         self.config = config
@@ -92,13 +98,13 @@ class MouseActionManager:
             current_time = time.perf_counter()
             delta = current_time - last_time
             last_time = current_time
-            
             self.scroll_controller.update(delta)
+
             dx, dy = 0, 0
             cfg = self.config
             move_speed = cfg.MOUSE_MOVE_SPEED
 
-            if self.mode_switch.mouse_control_mode_active:
+            if self.mode_switch.is_mouse_control_mode():
                 if (self.mouse_state.sticky_left_click_active and 
                     not self.mouse_state.is_left_mouse_button_held_by_keyboard):
                     self.mouse_controller.press(pynput.mouse.Button.left)
@@ -143,14 +149,14 @@ class MouseControl:
         )
 
     def on_press(self, key):
-        if self.mode_switch.mouse_control_mode_active:
+        if self.mode_switch.is_mouse_control_mode():
             if key == pynput.keyboard.Key.shift_l:
                 self.mouse_state.mouse_speed_shift_active = True
             elif key == pynput.keyboard.Key.caps_lock:
                 self.mouse_state.mouse_speed_caplock_active = not self.mouse_state.mouse_speed_caplock_active
 
         if (key == self.config.EXIT_PROGRAM_PYNPUT and 
-            self.mode_switch.mouse_control_mode_active):
+            self.mode_switch.is_mouse_control_mode()):
             if self.mode_switch.tray_icon:
                 self.mode_switch.tray_icon.on_exit()
             return False
@@ -160,32 +166,54 @@ class MouseControl:
             self.mouse_state.mouse_speed_shift_active = False
 
     def win32_event_filter(self, msg, data):
-        global keyboard_listener
+        global keyboard_listener, region_selector_process
         is_key_down = (msg == win32con.WM_KEYDOWN or msg == win32con.WM_SYSKEYDOWN)
         vk = data.vkCode
         cfg = self.config
 
-        if is_key_down and vk == cfg.HOTKEY_TRIGGER_VK:
-            if win32api.GetKeyState(win32con.VK_MENU) < 0:
-                self.mode_switch.on_alt_a_activated()
+        if is_key_down:
+            if (vk == cfg.HOTKEY_TRIGGER_VK and 
+                win32api.GetKeyState(win32con.VK_MENU) < 0):
+                self.mode_switch.toggle_mouse_control_mode()
+                keyboard_listener.suppress_event()
+                return True
+            elif (vk == cfg.ENTER_REGION_SELECT_VK and 
+                  self.mode_switch.is_mouse_control_mode()):
+                if region_selector_process and region_selector_process.poll() is None:
+                    region_selector_process.terminate()
+                self.mode_switch.set_mode(AppMode.REGION_SELECT)
+
+                if getattr(sys, 'frozen', False):
+                    base_path = os.path.dirname(sys.executable)
+                    command = [os.path.join(base_path, 'region_selector.exe')]
+                else:
+                    script_path = os.path.abspath(os.path.join(
+                        os.path.dirname(__file__), "region_selector.py"))
+                    command = [sys.executable, script_path]
+
+                startupinfo = subprocess.STARTUPINFO()
+                startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+                region_selector_process = subprocess.Popen(
+                    command, startupinfo=startupinfo)
+                threading.Thread(
+                    target=self.wait_for_region_selector, 
+                    daemon=True
+                ).start()
                 keyboard_listener.suppress_event()
                 return True
 
-        if not self.mode_switch.mouse_control_mode_active:
-            return True
+        if self.mode_switch.is_mouse_control_mode() and vk in cfg.MOUSE_CONTROL_VKS:
+            if is_key_down and self.mouse_state.sticky_left_click_active:
+                exempt_keys = {
+                    cfg.MOVE_UP_VK,
+                    cfg.MOVE_DOWN_VK,
+                    cfg.MOVE_LEFT_VK,
+                    cfg.MOVE_RIGHT_VK,
+                    cfg.STICKY_LEFT_CLICK_VK
+                }
+                if vk not in exempt_keys:
+                    self.mouse_action.release_sticky_click()
 
-        if is_key_down and self.mouse_state.sticky_left_click_active:
-            exempt_keys = {
-                cfg.MOVE_UP_VK,
-                cfg.MOVE_DOWN_VK,
-                cfg.MOVE_LEFT_VK,
-                cfg.MOVE_RIGHT_VK,
-                cfg.STICKY_LEFT_CLICK_VK
-            }
-            if vk not in exempt_keys:
-                self.mouse_action.release_sticky_click()
-
-        if vk in cfg.MOUSE_CONTROL_VKS:
             if vk == cfg.LEFT_CLICK_VK:
                 self.mouse_action.handle_left_button_event(is_key_down)
             elif vk == cfg.RIGHT_CLICK_VK:
@@ -193,7 +221,7 @@ class MouseControl:
             elif vk == cfg.MIDDLE_CLICK_VK:
                 self.mouse_action.handle_middle_button_event(is_key_down)
             elif vk == cfg.TOGGLE_MODE_INTERNAL_VK and is_key_down:
-                self.mode_switch.on_alt_a_activated()
+                self.mode_switch.toggle_mouse_control_mode()
             elif vk == cfg.STICKY_LEFT_CLICK_VK and is_key_down:
                 self.mouse_state.sticky_left_click_active = not self.mouse_state.sticky_left_click_active
                 print(f"粘滞点击模式切换为: {self.mouse_state.sticky_left_click_active}")
@@ -226,37 +254,88 @@ class MouseControl:
             keyboard_listener.suppress_event()
         return True
 
+    def wait_for_region_selector(self):
+        global region_selector_process
+        if region_selector_process:
+            region_selector_process.wait()
+            print("区域选择进程已结束。")
+            self.mode_switch.return_from_region_select()
+            region_selector_process = None
+
 
 if __name__ == "__main__":
+    # ... (此部分内容无需修改，保持原样)
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+
     try:
-        config = config_loader.AppConfig()
+        if '--restarted-as-admin' not in sys.argv:
+            try:
+                config = config_loader.AppConfig()
+            except Exception as e:
+                ctypes.windll.user32.MessageBoxW(
+                    None,
+                    f"无法加载配置文件 'config.ini'。\n错误: {e}",
+                    "KeyMouse 致命错误",
+                    0x10
+                )
+                sys.exit(1)
 
-        if config.RUN_AS_ADMIN and not is_admin():
-            print("需要管理员权限，正在尝试提权重启...")
-            params = " ".join(sys.argv[1:])
-            ctypes.windll.shell32.ShellExecuteW(
-                None, "runas", sys.executable, params, None, 1
-            )
-            sys.exit(0)
+            if config.RUN_AS_ADMIN and not is_admin():
+                if not getattr(sys, 'frozen', False):
+                    script_path = os.path.abspath(sys.argv[0])
+                    params = ([f'"{script_path}"'] + 
+                             sys.argv[1:] + 
+                             ['--restarted-as-admin'])
+                    params_str = " ".join(params)
+                else:
+                    params_str = " ".join(sys.argv[1:] + ['--restarted-as-admin'])
 
-        parser = argparse.ArgumentParser(description="KeyMouse - 键盘控制鼠标工具")
-        parser.add_argument("--gui", "-g", action="store_true",
-                          help="启动GUI配置界面")
+                try:
+                    rtn = ctypes.windll.shell32.ShellExecuteW(
+                        None, "runas", sys.executable, params_str, None, 1)
+                    if rtn <= 32:
+                        ctypes.windll.user32.MessageBoxW(
+                            None,
+                            f"请求管理员权限失败。\n错误代码: {rtn}",
+                            "KeyMouse 错误",
+                            0x10
+                        )
+                    sys.exit(0)
+                except Exception as e:
+                    ctypes.windll.user32.MessageBoxW(
+                        None,
+                        f"尝试以管理员身份重启时发生意外错误。\n错误: {e}",
+                        "KeyMouse 错误",
+                        0x10
+                    )
+                    sys.exit(1)
+
+        parser = argparse.ArgumentParser(description="KeyMouse")
+        parser.add_argument(
+            "--gui", "-g",
+            action="store_true",
+            help="启动GUI配置界面"
+        )
+        parser.add_argument(
+            '--restarted-as-admin',
+            action='store_true',
+            help=argparse.SUPPRESS
+        )
         args = parser.parse_args()
 
         if args.gui:
             try:
-                print("正在以GUI模式启动...")
+                from gui import run_gui
                 run_gui()
                 sys.exit(0)
             except ImportError as e:
                 print(f"无法启动GUI: {e}")
                 sys.exit(1)
 
-        print("--------------------------------------------------")
-        print("             KeyMouse")
-        print("--------------------------------------------------")
-        print("配置已成功加载。")
+        config = config_loader.AppConfig()
         if is_admin():
             print("程序已在 [管理员权限] 下运行。")
 
@@ -268,10 +347,10 @@ if __name__ == "__main__":
             win32_event_filter=mouse_control.win32_event_filter,
             suppress=False
         )
+
         tray = None
         try:
-            tray = TrayIcon(mouse_control.mode_switch, keyboard_listener,
-                           stop_event)
+            tray = TrayIcon(mouse_control.mode_switch, keyboard_listener, stop_event)
         except ImportError as e:
             print(f"无法加载托盘图标: {e}")
 
@@ -284,15 +363,21 @@ if __name__ == "__main__":
             args=(stop_event,),
             daemon=True
         )
+
         keyboard_listener.start()
         movement_thread.start()
         keyboard_listener.join()
+
         print("程序已安全退出。")
 
     except Exception as e:
-        print("\n[致命错误] 程序意外终止。")
-        print(f"错误类型: {type(e).__name__}")
-        print(f"错误信息: {e}")
+        error_msg = (f"错误: '{type(e).__name__}' object has no attribute 'on_release'"
+                    if isinstance(e, AttributeError) and 'on_release' in str(e)
+                    else f"错误: {e}")
+        ctypes.windll.user32.MessageBoxW(
+            None,
+            f"程序遇到致命错误并即将退出。\n\n{error_msg}",
+            "KeyMouse 致命错误",
+            0x10
+        )
         traceback.print_exc()
-        if not getattr(sys, 'frozen', False):
-            input("\n按 Enter 键退出...")

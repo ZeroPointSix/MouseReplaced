@@ -7,6 +7,7 @@ import os
 import sys
 import time
 from gui import run_gui 
+from modeswitch import AppMode # <--- 新增导入
 
 class TrayIcon:
     def __init__(self, mode_switch, listener, stop_event):
@@ -18,7 +19,7 @@ class TrayIcon:
         self.inactive_icon = self.create_icon(False)
         self.thread = None
         self.is_settings_window_open = False
-        self.is_exiting = False # 新增一个标志，防止重复退出
+        self.is_exiting = False
 
     def create_icon(self, active):
         width, height = 64, 64
@@ -33,50 +34,35 @@ class TrayIcon:
         return image
     
     def update_icon(self):
+        """根据当前的程序模式，更新托盘图标和标题。"""
         if self.icon:
-            self.icon.icon = self.active_icon if self.mode_switch.mouse_control_mode_active else self.inactive_icon
-            self.icon.title = "KeyMouse - 鼠标控制模式已启用" if self.mode_switch.mouse_control_mode_active else "KeyMouse - 普通模式"
+            is_active = self.mode_switch.is_mouse_control_mode()
+            self.icon.icon = self.active_icon if is_active else self.inactive_icon
+            self.icon.title = f"KeyMouse - {self.mode_switch.current_mode.name} 模式"
     
-    # ====================================================================
-    # ====================  最终版退出逻辑 ========================
-    # ====================================================================
-    def _shutdown_sequence(self):
-        """
-        这个私有方法包含了所有实际的关闭操作。
-        它在一个独立的后台线程中运行，以避免阻塞主线程。
-        """
-        print("后台关闭序列已启动...")
-        
-        # 1. 停止 pystray 图标的事件循环
-        if self.icon:
-            self.icon.stop()
-        
-        # 2. 发送信号，让所有自定义的后台线程（如 movement_worker）停止
-        self.stop_event.set()
-        
-        # 3. 请求 pynput 监听器停止
-        self.listener.stop()
-        
-        # 4. (可选但推荐) 等待监听器线程真正结束
-        if self.listener.is_alive():
-            self.listener.join(timeout=1.0) # 添加超时以防万一
-        print("所有线程已停止。")
-
-        # 5. (关键) 强制终止整个进程，以100%避免PyInstaller的清理警告
-        os._exit(0)
-
     def on_exit(self):
-        """
-        当用户点击“退出”或程序请求重启时，此方法被调用。
-        它的唯一职责是启动一个后台线程来执行真正的关闭操作。
-        """
+        """执行异步的、健壮的退出序列。"""
         if not self.is_exiting:
             self.is_exiting = True
             print("收到退出请求，启动后台关闭线程...")
-            # 创建并启动一个守护线程来处理关闭，然后立即返回
             shutdown_thread = threading.Thread(target=self._shutdown_sequence, daemon=True)
             shutdown_thread.start()
 
+    def _shutdown_sequence(self):
+        """在后台执行所有实际的关闭操作，以避免死锁。"""
+        print("后台关闭序列已启动...")
+        if self.icon:
+            self.icon.stop()
+        
+        self.stop_event.set()
+        self.listener.stop()
+        
+        if self.listener.is_alive():
+            self.listener.join(timeout=1.0)
+        print("所有线程已停止。")
+        
+        os._exit(0)
+    
     def on_settings_window_closed(self):
         self.is_settings_window_open = False
         print("设置窗口已关闭。")
@@ -101,16 +87,29 @@ class TrayIcon:
         self.thread.start()
     
     def _run(self):
+        """在独立线程中运行pystray的事件循环。"""
         menu = pystray.Menu(
             pystray.MenuItem("设置", self.on_settings),
             pystray.MenuItem("退出", self.on_exit)
         )
         self.icon = pystray.Icon("keymouse", self.inactive_icon, "KeyMouse", menu)
         
-        original_mode_switch = self.mode_switch.on_alt_a_activated
-        def new_mode_switch():
-            original_mode_switch()
+        # --- 核心修正点：调用正确的新方法 ---
+        # 1. 保存原始的模式切换方法
+        original_toggle_method = self.mode_switch.toggle_mouse_control_mode
+        
+        # 2. 创建一个新的包装方法
+        def new_toggle_with_icon_update():
+            # 首先，调用原始的切换逻辑
+            original_toggle_method()
+            # 然后，更新我们的托盘图标
             self.update_icon()
-        self.mode_switch.on_alt_a_activated = new_mode_switch
+
+        # 3. 用我们新的包装方法，替换掉原始的切换方法
+        #    这样，每当主程序调用 toggle_mouse_control_mode 时，图标都会自动更新
+        self.mode_switch.toggle_mouse_control_mode = new_toggle_with_icon_update
+        
+        # 首次运行时，也更新一次图标
+        self.update_icon()
         
         self.icon.run()
