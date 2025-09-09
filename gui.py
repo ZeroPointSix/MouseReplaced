@@ -8,7 +8,7 @@ import subprocess
 from config_loader import AppConfig, get_base_path
 from utool import KEY_TO_VK, NAME_TO_PYNPUT_KEY
 import autostart_manager
-
+import path_manager
 
 class FormattedLabel(ttk.Label):
     """格式化标签控件,用于显示数值。"""
@@ -553,14 +553,18 @@ class KeyMouseGUI:
         """应用设置并重启程序。"""
         try:
             print("准备重启...")
+            # --- 核心修复：所有重启逻辑都基于 config_loader.get_base_path() ---
+            base_path = get_base_path()
+            executable = sys.executable
             params = sys.argv[1:]
+
             if getattr(sys, 'frozen', False):
-                restart_target = [sys.executable]+params
+                # 打包后，直接运行自己
+                restart_target = [executable] + params
             else:
-                main_script = os.path.abspath(
-                    os.path.join(os.path.dirname(__file__), "main.py")
-                ) 
-                restart_target = [sys.executable, main_script]
+                # 开发时，用解释器运行 main.py
+                main_script = os.path.join(base_path, "main.py")
+                restart_target = [executable, main_script] + params
                 
             subprocess.Popen(restart_target)
             print(f"新进程已启动: {' '.join(restart_target)}")
@@ -654,6 +658,5 @@ def run_gui(on_close_callback=None, tray_icon=None):
     root.protocol("WM_DELETE_WINDOW", on_closing)
     root.mainloop()
 
-  
 if __name__ == "__main__":
     run_gui()
