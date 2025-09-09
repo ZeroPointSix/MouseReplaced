@@ -36,7 +36,6 @@ from gui import run_gui
 from tray_icon import TrayIcon
 from modeswitch import AppMode
 
-# ... 日志配置和 is_admin() 保持不变 ...
 try:
     log_file_path = os.path.join(os.path.dirname(os.path.abspath(sys.argv[0])), 'main.log')
     logging.basicConfig(
@@ -297,11 +296,9 @@ class MouseControl:
         
         if vk == cfg.TOGGLE_MODE_INTERNAL_VK and is_key_down:
             self.mode_switch.toggle_mouse_control_mode()
-        elif is_key_down and self.mouse_state.sticky_left_click_active:
-            exempt_keys = {cfg.MOVE_UP_VK, cfg.MOVE_DOWN_VK,
-                         cfg.MOVE_LEFT_VK, cfg.MOVE_RIGHT_VK,
-                         cfg.STICKY_LEFT_CLICK_VK}
-            if vk not in exempt_keys:
+        elif vk == cfg.STICKY_LEFT_CLICK_VK and is_key_down:
+            self.mouse_state.sticky_left_click_active = not self.mouse_state.sticky_left_click_active
+            if not self.mouse_state.sticky_left_click_active:
                 self.mouse_action.release_sticky_click()
         elif vk == cfg.LEFT_CLICK_VK:
             self.mouse_action.handle_left_button_event(is_key_down)
@@ -309,10 +306,6 @@ class MouseControl:
             self.mouse_action.handle_right_button_event(is_key_down)
         elif vk == cfg.MIDDLE_CLICK_VK:
             self.mouse_action.handle_middle_button_event(is_key_down)
-        elif vk == cfg.STICKY_LEFT_CLICK_VK and is_key_down:
-            self.mouse_state.sticky_left_click_active = not self.mouse_state.sticky_left_click_active
-            if not self.mouse_state.sticky_left_click_active:
-                self.mouse_action.release_sticky_click()
         elif vk == cfg.SCROLL_DOWN_VK:
             if is_key_down:
                 self.mouse_action.start_scrolling_down()
