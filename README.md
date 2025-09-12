@@ -194,7 +194,7 @@ python main.py -g
 
 ### **4. 日常使用流程**
 
-1.  打开一个新的终端。
+1.  打开一个新的终端。(使用win+r,输入Powershell进入终端)
 2.  `cd` 到项目文件夹。
 3.  激活虚拟环境 (`.\venv\Scripts\activate`)。
 4.  运行主程序 (`python main.py`)。
