@@ -118,7 +118,7 @@ KeyMouse 的设计围绕以下几个核心理念展开：
 打开您的命令行终端（CMD, PowerShell 或 Git Bash），执行以下命令将项目克隆到本地：
 
 ```bash
-git clone 
+git clone https://github.com/ZeroPointSix/MouseReplaced.git
 cd KeyMouse
 ```
 
